@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VoltGrid™ | EV Charging Load Impact & Microgrid Simulator</title>
+  <meta name="description" content="Next-Generation Electric Vehicle Distribution Grid Impact Simulator, IEEE C57.91 Transformer Thermal Modeling, Voltage Sag Analysis, and V2G Microgrid Optimization.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body class="dark-theme">
+  <header class="app-header">
+    <div class="header-branding">
+      <div class="logo-badge">
+        <svg class="bolt-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+        </svg>
+      </div>
+      <div>
+        <h1 class="app-title">VoltGrid™ <span class="badge-tag">ENGINEERING SIMULATOR</span></h1>
+        <p class="app-subtitle">EV Grid Integration • IEEE C57.91 Transformer Degradation • V2G Microgrid</p>
+      </div>
+    </div>
+
+    <div class="header-actions">
+      <div class="system-status-pill">
+        <span class="status-dot pulsing"></span>
+        <span id="substation-status">Substation: 2.5 MVA (12.47 kV)</span>
+      </div>
+      <button class="btn btn-secondary" id="btn-export-csv">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="7 10 12 15 17 10"></polyline>
+          <line x1="12" y1="15" x2="12" y2="3"></line>
+        </svg>
+        Export Run CSV
+      </button>
+      <button class="btn btn-primary" id="btn-run-stress">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polygon points="5 3 19 12 5 21 5 3"></polygon>
+        </svg>
+        Run Monte Carlo
+      </button>
+    </div>
+  </header>
+
+  <!-- Live KPI Ribbon -->
+  <section class="kpi-ribbon">
+    <div class="kpi-card" id="card-peak-load">
+      <div class="kpi-label">Substation Peak Load</div>
+      <div class="kpi-value"><span id="kpi-peak-val">4.46</span> <span class="kpi-unit">MW</span></div>
+      <div class="kpi-status-bar"><div class="fill-bar danger" id="bar-peak-load" style="width: 88%;"></div></div>
+      <div class="kpi-subtext" id="kpi-peak-overload">+87.7% Over Rating (2.38 MW)</div>
+    </div>
+
+    <div class="kpi-card" id="card-transformer-temp">
+      <div class="kpi-label">Hot-Spot Temp (IEEE C57.91)</div>
+      <div class="kpi-value"><span id="kpi-hotspot-val">189.4</span> <span class="kpi-unit">°C</span></div>
+      <div class="kpi-status-bar"><div class="fill-bar critical" id="bar-hotspot" style="width: 95%;"></div></div>
+      <div class="kpi-subtext" id="kpi-hotspot-sub">Limit: 110°C • <span id="kpi-aging-mult">74.2x</span> Aging</div>
+    </div>
+
+    <div class="kpi-card" id="card-feeder-voltage">
+      <div class="kpi-label">Feeder Min Voltage (Bus 13)</div>
+      <div class="kpi-value"><span id="kpi-voltage-val">0.951</span> <span class="kpi-unit">p.u.</span></div>
+      <div class="kpi-status-bar"><div class="fill-bar warning" id="bar-voltage" style="width: 95%;"></div></div>
+      <div class="kpi-subtext" id="kpi-voltage-status">ANSI C84.1 Min: 0.950 p.u.</div>
+    </div>
+
+    <div class="kpi-card" id="card-carbon-footprint">
+      <div class="kpi-label">Daily Grid CO₂ Emissions</div>
+      <div class="kpi-value"><span id="kpi-carbon-val">14,868</span> <span class="kpi-unit">kg</span></div>
+      <div class="kpi-status-bar"><div class="fill-bar neutral" id="bar-carbon" style="width: 75%;"></div></div>
+      <div class="kpi-subtext" id="kpi-carbon-mitigated">Peaker Gas Dependent</div>
+    </div>
+  </section>
+
+  <!-- Main Grid Workspace -->
+  <main class="main-dashboard">
+    <!-- Left Interactive Control Panel -->
+    <aside class="control-panel glass-panel">
+      <div class="panel-header">
+        <h2 class="panel-title">Grid Configuration</h2>
+        <span class="chip-badge">Parameters</span>
+      </div>
+
+      <!-- Paradigm Switcher -->
+      <div class="control-group">
+        <label class="control-label">Charging Management Strategy</label>
+        <div class="paradigm-selector">
+          <button class="paradigm-btn active" data-scenario="uncontrolled">
+            <span class="p-dot red"></span>
+            <div class="p-text">
+              <strong>A. Uncontrolled</strong>
+              <small>Immediate plug & charge</small>
+            </div>
+          </button>
+          <button class="paradigm-btn" data-scenario="tou">
+            <span class="p-dot amber"></span>
+            <div class="p-text">
+              <strong>B. Static TOU Tariff</strong>
+              <small>11 PM rebound avalanche</small>
+            </div>
+          </button>
+          <button class="paradigm-btn" data-scenario="smart">
+            <span class="p-dot cyan"></span>
+            <div class="p-text">
+              <strong>C. Smart Valley Filling</strong>
+              <small>Quadratic coordinated shift</small>
+            </div>
+          </button>
+          <button class="paradigm-btn" data-scenario="microgrid">
+            <span class="p-dot green"></span>
+            <div class="p-text">
+              <strong>D. Sustainable Microgrid</strong>
+              <small>Solar PV + BESS + V2G</small>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <!-- Sliders -->
+      <div class="control-group">
+        <div class="slider-header">
+          <label>EV Feeder Penetration Rate</label>
+          <span class="slider-val" id="val-penetration">70%</span>
+        </div>
+        <input type="range" id="slider-penetration" min="10" max="100" step="5" value="70">
+        <div class="slider-ticks"><span>10% (~100 EVs)</span><span>50%</span><span>100% (~1,000 EVs)</span></div>
+      </div>
+
+      <div class="control-group">
+        <div class="slider-header">
+          <label>Carport & Rooftop Solar PV</label>
+          <span class="slider-val" id="val-solar">800 kWp</span>
+        </div>
+        <input type="range" id="slider-solar" min="0" max="1500" step="50" value="800">
+        <div class="slider-ticks"><span>0 kW</span><span>750 kW</span><span>1.5 MW</span></div>
+      </div>
+
+      <div class="control-group">
+        <div class="slider-header">
+          <label>Substation BESS Storage</label>
+          <span class="slider-val" id="val-bess">1,200 kWh</span>
+        </div>
+        <input type="range" id="slider-bess" min="0" max="2400" step="100" value="1200">
+        <div class="slider-ticks"><span>0 kWh</span><span>1.2 MWh</span><span>2.4 MWh</span></div>
+      </div>
+
+      <div class="control-group">
+        <div class="checkbox-container">
+          <input type="checkbox" id="check-compare-all" checked>
+          <label for="check-compare-all">Overlay All 4 Scenarios on Chart</label>
+        </div>
+      </div>
+
+      <div class="quick-summary-box">
+        <h4>Physical Architecture</h4>
+        <ul>
+          <li><strong>Substation:</strong> 2.5 MVA, 12.47 kV / 480 V</li>
+          <li><strong>Thermal Baseline:</strong> 65°C Rise, IEEE C57.91</li>
+          <li><strong>Feeder:</strong> 13-Bus Radial Line (6.5 km)</li>
+          <li><strong>Normal Life Expectancy:</strong> 180,000 Hours</li>
+        </ul>
+      </div>
+    </aside>
+
+    <!-- Center & Right Simulation Visualizations -->
+    <section class="visuals-area">
+      <!-- 24-Hour Load Profile Chart Card -->
+      <div class="card glass-panel chart-card">
+        <div class="card-header">
+          <div>
+            <h3 class="card-title">24-Hour Feeder Net Load Profile & Transformer Capacity Limits</h3>
+            <p class="card-subtitle">Real-time simulation across 24 hourly timesteps (MW)</p>
+          </div>
+          <div class="chart-badges">
+            <span class="legend-badge base">Baseline</span>
+            <span class="legend-badge unc">Uncontrolled</span>
+            <span class="legend-badge tou">TOU Rebound</span>
+            <span class="legend-badge smart">Smart Valley</span>
+            <span class="legend-badge v2g">Solar + V2G</span>
+          </div>
+        </div>
+        <div class="chart-wrapper">
+          <canvas id="loadChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Bottom Split: Feeder Bus Voltage Sag & Transformer Thermal Gauge -->
+      <div class="bottom-split-grid">
+        <!-- Radial Feeder Voltage Profile (Bus 1 to Bus 13) -->
+        <div class="card glass-panel">
+          <div class="card-header">
+            <div>
+              <h3 class="card-title">Radial Feeder Bus Voltage Profile (LinDistFlow)</h3>
+              <p class="card-subtitle">Voltage sag from Substation (Bus 1) to Feeder End (Bus 13)</p>
+            </div>
+            <span class="chip-badge info" id="bus-status-chip">ANSI Compliant</span>
+          </div>
+          <div class="chart-wrapper-sm">
+            <canvas id="voltageChart"></canvas>
+          </div>
+          <!-- Feeder Bus Heatmap Bar -->
+          <div class="bus-heatmap-container">
+            <div class="bus-node-labels">
+              <span>B1 (Sub)</span><span>B3</span><span>B6</span><span>B9</span><span>B11</span><span>B13 (End)</span>
+            </div>
+            <div class="bus-heatmap-bar" id="heatmap-bar"></div>
+          </div>
+        </div>
+
+        <!-- Transformer Degradation & Loss of Life Comparison -->
+        <div class="card glass-panel">
+          <div class="card-header">
+            <div>
+              <h3 class="card-title">Asset Reliability & Degradation Matrix</h3>
+              <p class="card-subtitle">IEEE Std C57.91-2011 Loss of Life and Aging Rates</p>
+            </div>
+          </div>
+          <div class="matrix-table-wrapper">
+            <table class="matrix-table">
+              <thead>
+                <tr>
+                  <th>Regime</th>
+                  <th>Peak MW</th>
+                  <th>Hot-Spot</th>
+                  <th>Aging (FAA)</th>
+                  <th>Asset Status</th>
+                </tr>
+              </thead>
+              <tbody id="matrix-tbody">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+          <div class="v2g-summary-banner" id="v2g-banner">
+            <div class="v2g-icon">⚡</div>
+            <div>
+              <strong>Sustainable Mitigation Impact:</strong>
+              <span id="v2g-callout">Smart valley-filling and V2G shaving reduce transformer thermal stress by 92.4°C and prevent 3.66 tons of daily CO₂!</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- EV Telemetry Sample Fleet Table (Collapsible) -->
+      <div class="card glass-panel fleet-card">
+        <div class="card-header">
+          <div>
+            <h3 class="card-title">Simulated EV Fleet Telemetry & Smart Flexibility Profiles</h3>
+            <p class="card-subtitle">Real-time sampled telemetry records for active vehicles on the 13-bus feeder</p>
+          </div>
+          <div class="table-search-box">
+            <input type="text" id="fleet-search" placeholder="Filter by model or user type...">
+          </div>
+        </div>
+        <div class="table-wrapper">
+          <table class="telemetry-table" id="telemetry-table">
+            <thead>
+              <tr>
+                <th>Session ID</th>
+                <th>Model</th>
+                <th>Battery</th>
+                <th>User Cluster</th>
+                <th>EVSE Level</th>
+                <th>Arrival</th>
+                <th>SoC Range</th>
+                <th>Energy Req</th>
+                <th>Flexibility Index</th>
+                <th>V2G</th>
+              </tr>
+            </thead>
+            <tbody id="fleet-tbody">
+              <!-- Dynamically populated from cleaned dataset sample -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <div class="footer-left">
+      <span>VoltGrid™ Simulator v2.4 • Developed for Sustainable Energy Engineering Project</span>
+    </div>
+    <div class="footer-right">
+      <span>Standards: IEEE C57.91 • ANSI C84.1 • SAE J3072 • ISO 15118</span>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
